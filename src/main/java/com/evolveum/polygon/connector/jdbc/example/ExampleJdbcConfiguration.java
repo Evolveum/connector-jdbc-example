@@ -30,6 +30,8 @@ import org.identityconnectors.framework.spi.StatefulConfiguration;
 
 import com.evolveum.polygon.connector.jdbc.AbstractJdbcConfiguration;
 
+
+
 public class ExampleJdbcConfiguration extends AbstractJdbcConfiguration implements StatefulConfiguration{
 
 	private static final Log LOGGER = Log.getLog(ExampleJdbcConnector.class);

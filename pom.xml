@@ -86,13 +86,6 @@
 			<artifactId>connector-jdbc</artifactId>
 			<version>1.4.2.15-SNAPSHOT</version>
 		</dependency>
-		
-		<dependency>
-  <groupId>com.oracle</groupId>
-  <artifactId>ojdbc8</artifactId>
-  <version>12.2.0.1</version>
-  <!--<version>11.2.0.4</version>-->
-</dependency>
 	</dependencies>
 	
 	<distributionManagement>

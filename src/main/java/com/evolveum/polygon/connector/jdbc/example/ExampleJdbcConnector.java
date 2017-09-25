@@ -123,6 +123,7 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 			LOGGER.error("Attribute of type OperationOptions not provided.");
 			throw new InvalidAttributeValueException("Attribute of type OperationOptions is not provided.");
 		}
+		LOGGER.info("executeQuery on {0}, filter: {1}, options: {2}", objectClass, query, options);
 		
 		SelectSQLBuilder selectSqlB = new SelectSQLBuilder();
 		String whereClause = cretedWhereClauseFromFilter(query);
@@ -131,8 +132,16 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 		if(names != null){
 			String[] quotedName = new String[names.length];;
 			for(int i =0; i < names.length; i++){
-				quotedName[i] = quoteName(getConfiguration().getQuoting(), names[i]);
-				i++;
+				LOGGER.info("name of requested column {0}", quoteName(getConfiguration().getQuoting(), names[i]));
+				if(names[i].equals(Uid.NAME)){
+					quotedName[i] = quoteName(getConfiguration().getQuoting(), KEY_OF_ACCOUNTS_TABLE.toLowerCase());
+				} else if(names[i].equals(Name.NAME)){
+					quotedName[i] = quoteName(getConfiguration().getQuoting(), COLUMN_WITH_NAME.toLowerCase());
+				} else if(names[i].equals(OperationalAttributes.PASSWORD_NAME)){
+					quotedName[i] = quoteName(getConfiguration().getQuoting(), COLUMN_WITH_PASSWORD.toLowerCase());
+				} else {
+					quotedName[i] = quoteName(getConfiguration().getQuoting(), names[i]);
+				}
 			}
 			selectSqlB.setAllNamesOfColumns(quotedName);
 		}
@@ -145,7 +154,6 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 		
 		convertListOfRowsToConnectorObject(rowsOfTable, handler);
 
-		LOGGER.info("executeQuery on {0}, filter: {1}, options: {2}", objectClass, query, options);
 	}
 	
 	private void convertListOfRowsToConnectorObject(List<List<Attribute>> rowsOfTable, ResultsHandler handler){
@@ -354,6 +362,10 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 		
 		if (objectClass.is(ObjectClass.ACCOUNT_NAME)) { // __ACCOUNT__
 			
+			List<String> excludedNames = new ArrayList<String>();
+			excludedNames.add(COLUMN_WITH_PASSWORD);
+			excludedNames.add(COLUMN_WITH_NAME);
+			buildAttributeInfosFromTable(TABLE_OF_ACCOUNTS, quoteName(getConfiguration().getQuoting(), KEY_OF_ACCOUNTS_TABLE), excludedNames);
 			SQLRequest updateSQL = buildInsertOrUpdateSql(attributes, false, uid);
 			executeUpdateOnTable(updateSQL.getSql(), updateSQL.getParameters());
 			Uid newUid = AttributeUtil.getUidAttribute(attributes);
@@ -399,6 +411,9 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
     }
 	
 	private String cretedWhereClauseFromFilter(Filter query){
+		if(query == null){
+			return "";
+		}
 		StringBuilder sb = new StringBuilder();
 		sb.append("WHERE ").append(cretedBodyWhereClauseFromFilter(query, " LIKE "));
 		return sb.toString();

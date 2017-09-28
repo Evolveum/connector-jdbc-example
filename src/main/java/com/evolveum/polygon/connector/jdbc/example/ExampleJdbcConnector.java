@@ -16,12 +16,15 @@
 package com.evolveum.polygon.connector.jdbc.example;
 
 
+import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -42,6 +45,7 @@ import org.identityconnectors.framework.common.objects.Attribute;
 import org.identityconnectors.framework.common.objects.AttributeBuilder;
 import org.identityconnectors.framework.common.objects.AttributeInfo;
 import org.identityconnectors.framework.common.objects.AttributeUtil;
+import org.identityconnectors.framework.common.objects.ConnectorObject;
 import org.identityconnectors.framework.common.objects.ConnectorObjectBuilder;
 import org.identityconnectors.framework.common.objects.Name;
 import org.identityconnectors.framework.common.objects.ObjectClass;
@@ -52,6 +56,10 @@ import org.identityconnectors.framework.common.objects.OperationalAttributes;
 import org.identityconnectors.framework.common.objects.ResultsHandler;
 import org.identityconnectors.framework.common.objects.Schema;
 import org.identityconnectors.framework.common.objects.SchemaBuilder;
+import org.identityconnectors.framework.common.objects.SyncDeltaBuilder;
+import org.identityconnectors.framework.common.objects.SyncDeltaType;
+import org.identityconnectors.framework.common.objects.SyncResultsHandler;
+import org.identityconnectors.framework.common.objects.SyncToken;
 import org.identityconnectors.framework.common.objects.Uid;
 import org.identityconnectors.framework.common.objects.filter.AndFilter;
 import org.identityconnectors.framework.common.objects.filter.CompositeFilter;
@@ -68,6 +76,7 @@ import org.identityconnectors.framework.spi.ConnectorClass;
 import org.identityconnectors.framework.spi.operations.CreateOp;
 import org.identityconnectors.framework.spi.operations.SchemaOp;
 import org.identityconnectors.framework.spi.operations.SearchOp;
+import org.identityconnectors.framework.spi.operations.SyncOp;
 import org.identityconnectors.framework.spi.operations.TestOp;
 import org.identityconnectors.framework.spi.operations.UpdateOp;
 
@@ -84,7 +93,7 @@ import org.identityconnectors.framework.spi.operations.DeleteOp;
 
 @ConnectorClass(displayNameKey = "connector.gitlab.rest.display", configurationClass = ExampleJdbcConfiguration.class)
 public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfiguration> implements TestOp, SchemaOp, CreateOp, DeleteOp, UpdateOp, 
-		SearchOp<Filter> {
+		SearchOp<Filter>, SyncOp {
 
 	private static final Log LOGGER = Log.getLog(ExampleJdbcConnector.class);
 
@@ -92,6 +101,7 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 	private final static String KEY_OF_ACCOUNTS_TABLE = "ID";
 	private final static String COLUMN_WITH_PASSWORD = "PASSWORD";
 	private final static String COLUMN_WITH_NAME = "USERNAME";
+	private final static String COLUMN_WITH_LAST_MODIFICATION = "LASTMODIFICATION";
 	private final static String LIKE = " LIKE ";
 	private final static String NOT_LIKE = " NOT LIKE ";
 	private final static String AND = " AND ";
@@ -124,58 +134,89 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 			throw new InvalidAttributeValueException("Attribute of type OperationOptions is not provided.");
 		}
 		LOGGER.info("executeQuery on {0}, filter: {1}, options: {2}", objectClass, query, options);
+		if (objectClass.is(ObjectClass.ACCOUNT_NAME)) {
+			SelectSQLBuilder selectSqlB = new SelectSQLBuilder();
+			String whereClause = cretedWhereClauseFromFilter(query);
+			String[] names = options.getAttributesToGet();
 		
-		SelectSQLBuilder selectSqlB = new SelectSQLBuilder();
-		String whereClause = cretedWhereClauseFromFilter(query);
-		String[] names = options.getAttributesToGet();
-		
-		if(names != null){
-			String[] quotedName = new String[names.length];;
-			for(int i =0; i < names.length; i++){
-				LOGGER.info("name of requested column {0}", quoteName(getConfiguration().getQuoting(), names[i]));
-				if(names[i].equals(Uid.NAME)){
-					quotedName[i] = quoteName(getConfiguration().getQuoting(), KEY_OF_ACCOUNTS_TABLE.toLowerCase());
-				} else if(names[i].equals(Name.NAME)){
-					quotedName[i] = quoteName(getConfiguration().getQuoting(), COLUMN_WITH_NAME.toLowerCase());
-				} else if(names[i].equals(OperationalAttributes.PASSWORD_NAME)){
-					quotedName[i] = quoteName(getConfiguration().getQuoting(), COLUMN_WITH_PASSWORD.toLowerCase());
-				} else {
-					quotedName[i] = quoteName(getConfiguration().getQuoting(), names[i]);
+			if(names != null){
+				String[] quotedName = new String[names.length];;
+				for(int i =0; i < names.length; i++){
+					LOGGER.info("name of requested column {0}", quoteName(getConfiguration().getQuoting(), names[i]));
+					if(names[i].equals(Uid.NAME)){
+						quotedName[i] = quoteName(getConfiguration().getQuoting(), KEY_OF_ACCOUNTS_TABLE.toLowerCase());
+					} else if(names[i].equals(Name.NAME)){
+						quotedName[i] = quoteName(getConfiguration().getQuoting(), COLUMN_WITH_NAME.toLowerCase());
+					} else if(names[i].equals(OperationalAttributes.PASSWORD_NAME)){
+						quotedName[i] = quoteName(getConfiguration().getQuoting(), COLUMN_WITH_PASSWORD.toLowerCase());
+					} else {
+						quotedName[i] = quoteName(getConfiguration().getQuoting(), names[i]);
+					}
 				}
+				selectSqlB.setAllNamesOfColumns(quotedName);
 			}
-			selectSqlB.setAllNamesOfColumns(quotedName);
+			selectSqlB.addNameOfTable(TABLE_OF_ACCOUNTS);
+			selectSqlB.setWhereClause(whereClause);
+			String sqlRequest = selectSqlB.build();
+		
+			List<List<Attribute>> rowsOfTable = executeQueryOnTable(sqlRequest);
+		
+		
+			convertListOfRowsToConnectorObject(rowsOfTable, handler);
+		}  else {
+			LOGGER.error("Attribute of type ObjectClass is not supported.");
+			throw new UnsupportedOperationException("Attribute of type ObjectClass is not supported.");
 		}
-		selectSqlB.addNameOfTable(TABLE_OF_ACCOUNTS);
-		selectSqlB.setWhereClause(whereClause);
-		String sqlRequest = selectSqlB.build();
-		
-		List<List<Attribute>> rowsOfTable = executeQueryOnTable(sqlRequest);
-		
-		
-		convertListOfRowsToConnectorObject(rowsOfTable, handler);
 
+	}
+	
+	
+	private void convertListOfRowsToConnectorObject(List<List<Attribute>> rowsOfTable, SyncResultsHandler handler){
+		
+		
+		for (List<Attribute> row : rowsOfTable){
+			Attribute token = AttributeUtil.find(COLUMN_WITH_LAST_MODIFICATION, new HashSet<Attribute>(row));
+			ConnectorObject ret = convertRowToConnectorObject(row);
+			if(ret != null && token != null && token.getValue() != null && token.getValue().get(0) != null){
+				SyncDeltaBuilder synDeltaB = new SyncDeltaBuilder();
+				synDeltaB.setToken(new SyncToken(token.getValue().get(0).toString().substring(0, token.getValue().get(0).toString().lastIndexOf('.'))));
+				synDeltaB.setObject(ret);
+				synDeltaB.setDeltaType(SyncDeltaType.CREATE_OR_UPDATE);
+				handler.handle(synDeltaB.build());
+			}
+		}
 	}
 	
 	private void convertListOfRowsToConnectorObject(List<List<Attribute>> rowsOfTable, ResultsHandler handler){
 		
 		for (List<Attribute> row : rowsOfTable){
-			ConnectorObjectBuilder connObjB = new ConnectorObjectBuilder();
-			connObjB.setObjectClass(ObjectClass.ACCOUNT);
-			for(Attribute attr : row){
-				if(attr.getName().equalsIgnoreCase(KEY_OF_ACCOUNTS_TABLE)){
-					connObjB.addAttribute(new Uid(String.valueOf(attr.getValue().get(0))));
-				} else if(attr.getName().equalsIgnoreCase(COLUMN_WITH_NAME)){
-					connObjB.addAttribute(new Name(String.valueOf(attr.getValue().get(0))));
-				} else if(attr.getName().equalsIgnoreCase(COLUMN_WITH_PASSWORD)){
-					if(!getConfiguration().getSuppressPassword()){
-						connObjB.addAttribute(AttributeBuilder.build(OperationalAttributes.PASSWORD_NAME,new GuardedString(String.valueOf(attr.getValue().get(0)).toCharArray())));
-					}
-				} else {
-					connObjB.addAttribute(AttributeBuilder.build(attr.getName(),attr.getValue()));
-				}
+			ConnectorObject ret = convertRowToConnectorObject(row);
+			if(ret != null){
+				handler.handle(ret);
 			}
-			handler.handle(connObjB.build());
 		}
+	}
+	
+	private ConnectorObject convertRowToConnectorObject(List<Attribute> rowOfTable){
+		
+		ConnectorObject ret = null;
+		ConnectorObjectBuilder connObjB = new ConnectorObjectBuilder();
+		connObjB.setObjectClass(ObjectClass.ACCOUNT);
+		for(Attribute attr : rowOfTable){
+			if(attr.getName().equalsIgnoreCase(KEY_OF_ACCOUNTS_TABLE)){
+				connObjB.addAttribute(new Uid(String.valueOf(attr.getValue().get(0))));
+			} else if(attr.getName().equalsIgnoreCase(COLUMN_WITH_NAME)){
+				connObjB.addAttribute(new Name(String.valueOf(attr.getValue().get(0))));
+			} else if(attr.getName().equalsIgnoreCase(COLUMN_WITH_PASSWORD)){
+				if(!getConfiguration().getSuppressPassword()){
+					connObjB.addAttribute(AttributeBuilder.build(OperationalAttributes.PASSWORD_NAME,new GuardedString(String.valueOf(attr.getValue().get(0)).toCharArray())));
+				}
+			} else {
+				connObjB.addAttribute(AttributeBuilder.build(attr.getName(),attr.getValue()));
+			}
+		}
+		ret = connObjB.build();
+		return ret;
 	}
 	
 	@Override
@@ -228,7 +269,6 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 			excludedNames.add(COLUMN_WITH_NAME);
 			buildAttributeInfosFromTable(TABLE_OF_ACCOUNTS, quoteName(getConfiguration().getQuoting(), KEY_OF_ACCOUNTS_TABLE), excludedNames);
 			List<String> namesOfRequiredColumns = getNamesOfRequiredColumns();
-			System.out.println("XXXXXXXXXXX "+namesOfRequiredColumns);
 			Name name = AttributeUtil.getNameFromAttributes(attributes);
 			
 			if(getConfiguration().isEnableEmptyStr()) {
@@ -522,6 +562,97 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 		}
 		
 		return ret;
+	}
+
+	@Override
+	public SyncToken getLatestSyncToken(ObjectClass objectClass) {
+		
+		if (objectClass == null) {
+			LOGGER.error("Attribute of type ObjectClass not provided.");
+			throw new InvalidAttributeValueException("Attribute of type ObjectClass is not provided.");
+		}
+		if (objectClass.is(ObjectClass.ACCOUNT_NAME)) {
+			SelectSQLBuilder selectSqlB = new SelectSQLBuilder();
+			selectSqlB.addNameOfColumnWithFunction("MAX", COLUMN_WITH_LAST_MODIFICATION);
+			selectSqlB.addNameOfTable(TABLE_OF_ACCOUNTS);
+			String sqlRequest = selectSqlB.build();
+		
+			List<List<Attribute>> rowsOfTable = executeQueryOnTable(sqlRequest);
+			SyncToken ret = null;
+			if(!rowsOfTable.get(0).isEmpty()){
+				Object value = rowsOfTable.get(0).get(0).getValue().get(0);
+            	if(value != null){
+            		ret = new SyncToken(value.toString().substring(0, value.toString().lastIndexOf('.')));
+            	}
+			}
+			
+			if(ret == null){
+				StringBuilder sb = new StringBuilder();
+				sb.append(new java.sql.Date((Calendar.getInstance().getTimeInMillis())).toString()).append(" ").append(new java.sql.Time((Calendar.getInstance().getTimeInMillis())).toString());
+				ret = new SyncToken(sb.toString());
+			}
+			
+			return ret;
+		}  else {
+			LOGGER.error("Attribute of type ObjectClass is not supported.");
+			throw new UnsupportedOperationException("Attribute of type ObjectClass is not supported.");
+		}
+	}
+
+	@Override
+	public void sync(ObjectClass objectClass, SyncToken token, SyncResultsHandler handler, OperationOptions options) {
+		if (objectClass == null) {
+			LOGGER.error("Attribute of type ObjectClass not provided.");
+			throw new InvalidAttributeValueException("Attribute of type ObjectClass is not provided.");
+		}
+
+		if (handler == null) {
+			LOGGER.error("Attribute of type ResultsHandler not provided.");
+			throw new InvalidAttributeValueException("Attribute of type ResultsHandler is not provided.");
+		}
+		
+		if (options == null) {
+			LOGGER.error("Attribute of type OperationOptions not provided.");
+			throw new InvalidAttributeValueException("Attribute of type OperationOptions is not provided.");
+		}
+		LOGGER.info("sync on {0}, token: {1}, options: {2}", objectClass, token, options);
+		
+		if (objectClass.is(ObjectClass.ACCOUNT_NAME)) {
+			SelectSQLBuilder selectSqlB = new SelectSQLBuilder();
+			StringBuilder whereClauseB = new StringBuilder();
+			whereClauseB.append("WHERE ").append(COLUMN_WITH_LAST_MODIFICATION).append(" > TO_DATE('").append(token.getValue()).append("','YYYY-MM-DD HH24:MI:SS')");
+			String whereClause = whereClauseB.toString();
+			String[] names = options.getAttributesToGet();
+		
+			if(names != null){
+				String[] quotedName = new String[names.length];;
+				for(int i =0; i < names.length; i++){
+					LOGGER.info("name of requested column {0}", quoteName(getConfiguration().getQuoting(), names[i]));
+					if(names[i].equals(Uid.NAME)){
+						quotedName[i] = quoteName(getConfiguration().getQuoting(), KEY_OF_ACCOUNTS_TABLE.toLowerCase());
+					} else if(names[i].equals(Name.NAME)){
+						quotedName[i] = quoteName(getConfiguration().getQuoting(), COLUMN_WITH_NAME.toLowerCase());
+					} else if(names[i].equals(OperationalAttributes.PASSWORD_NAME)){
+						quotedName[i] = quoteName(getConfiguration().getQuoting(), COLUMN_WITH_PASSWORD.toLowerCase());
+					} else {
+						quotedName[i] = quoteName(getConfiguration().getQuoting(), names[i]);
+					}
+				}
+				selectSqlB.setAllNamesOfColumns(quotedName);
+			}
+			selectSqlB.addNameOfTable(TABLE_OF_ACCOUNTS);
+			selectSqlB.setWhereClause(whereClause);
+			selectSqlB.setAddNameOfColumnToOrderByClause(COLUMN_WITH_LAST_MODIFICATION);
+			String sqlRequest = selectSqlB.build();
+		
+			List<List<Attribute>> rowsOfTable = executeQueryOnTable(sqlRequest);
+		
+			convertListOfRowsToConnectorObject(rowsOfTable, handler);
+		}  else {
+			LOGGER.error("Attribute of type ObjectClass is not supported.");
+			throw new UnsupportedOperationException("Attribute of type ObjectClass is not supported.");
+		}
+		
 	}
 	
 }

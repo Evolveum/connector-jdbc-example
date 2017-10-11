@@ -20,6 +20,7 @@ import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -85,6 +86,7 @@ import com.evolveum.polygon.connector.jdbc.DeleteBuilder;
 import com.evolveum.polygon.connector.jdbc.SQLRequest;
 import com.evolveum.polygon.connector.jdbc.SelectSQLBuilder;
 import com.evolveum.polygon.connector.jdbc.InsertSQLBuilder;
+import com.evolveum.polygon.connector.jdbc.JdbcUtil;
 import com.evolveum.polygon.connector.jdbc.InsertOrUpdateSQL;
 import com.evolveum.polygon.connector.jdbc.SQLParameterBuilder;
 import com.evolveum.polygon.connector.jdbc.UpdateSQLBuilder;
@@ -179,7 +181,7 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 			ConnectorObject ret = convertRowToConnectorObject(row);
 			if(ret != null && token != null && token.getValue() != null && token.getValue().get(0) != null){
 				SyncDeltaBuilder synDeltaB = new SyncDeltaBuilder();
-				synDeltaB.setToken(new SyncToken(token.getValue().get(0).toString().substring(0, token.getValue().get(0).toString().lastIndexOf('.'))));
+				synDeltaB.setToken(new SyncToken(token.getValue().get(0)));
 				synDeltaB.setObject(ret);
 				synDeltaB.setDeltaType(SyncDeltaType.CREATE_OR_UPDATE);
 				handler.handle(synDeltaB.build());
@@ -582,7 +584,7 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 			if(!rowsOfTable.get(0).isEmpty()){
 				Object value = rowsOfTable.get(0).get(0).getValue().get(0);
             	if(value != null){
-            		ret = new SyncToken(value.toString().substring(0, value.toString().lastIndexOf('.')));
+            		ret = new SyncToken(value);
             	}
 			}
 			
@@ -620,7 +622,9 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 		if (objectClass.is(ObjectClass.ACCOUNT_NAME)) {
 			SelectSQLBuilder selectSqlB = new SelectSQLBuilder();
 			StringBuilder whereClauseB = new StringBuilder();
-			whereClauseB.append("WHERE ").append(COLUMN_WITH_LAST_MODIFICATION).append(" > TO_DATE('").append(token.getValue()).append("','YYYY-MM-DD HH24:MI:SS')");
+			String localToken = JdbcUtil.stringOrLongToTimestamp(token.getValue()).toString();
+					
+			whereClauseB.append("WHERE ").append(COLUMN_WITH_LAST_MODIFICATION).append(" > TO_DATE('").append(localToken.substring(0, localToken.toString().lastIndexOf('.'))).append("','YYYY-MM-DD HH24:MI:SS')");
 			String whereClause = whereClauseB.toString();
 			String[] names = options.getAttributesToGet();
 		

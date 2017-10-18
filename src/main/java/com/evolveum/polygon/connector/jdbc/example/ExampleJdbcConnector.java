@@ -250,12 +250,12 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 	}
 
 	@Override
-	public Uid create(ObjectClass objectClass, Set<Attribute> attributes, OperationOptions option) {
+	public Uid create(ObjectClass objectClass, Set<Attribute> attrs, OperationOptions option) {
 		if (objectClass == null) {
 			LOGGER.error("Attribute of type ObjectClass not provided.");
 			throw new InvalidAttributeValueException("Attribute of type ObjectClass not provided.");
 		}
-		if (attributes == null) {
+		if (attrs == null) {
 			LOGGER.error("Attribute of type Set<Attribute> not provided.");
 			throw new InvalidAttributeValueException("Attribute of type Set<Attribute> not provided.");
 		}
@@ -264,6 +264,8 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 			throw new InvalidAttributeValueException("Attribute of type OperationOptions not provided.");
 		}
 		
+		Set<Attribute> attributes = new HashSet<Attribute>();
+		attributes.addAll(attrs);
 		if (objectClass.is(ObjectClass.ACCOUNT_NAME)) { // __ACCOUNT__
 			
 			List<String> excludedNames = new ArrayList<String>();

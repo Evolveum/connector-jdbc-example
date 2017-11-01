@@ -591,9 +591,7 @@ public class ExampleJdbcConnector extends AbstractJdbcConnector<ExampleJdbcConfi
 			}
 			
 			if(ret == null){
-				StringBuilder sb = new StringBuilder();
-				sb.append(new java.sql.Date((Calendar.getInstance().getTimeInMillis())).toString()).append(" ").append(new java.sql.Time((Calendar.getInstance().getTimeInMillis())).toString());
-				ret = new SyncToken(sb.toString());
+				ret = new SyncToken(JdbcUtil.toConnId(new Timestamp(Calendar.getInstance().getTimeInMillis()), getConfiguration().getTimestampPresentation()));
 			}
 			
 			return ret;
